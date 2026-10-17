@@ -46,7 +46,6 @@ async function api(method, path, body) {
   try {
     return await apiRaw(method, path, body, d.deviceId, d.xToken);
   } catch (e) {
-    // /device tokens are occasionally rejected on first use; retry once fresh.
     if (e.message !== "API 401" && e.message !== "API 403") throw e;
     localStorage.removeItem(DEVICE_KEY);
     device = null;
@@ -77,18 +76,21 @@ function el(tag, cls, text) {
 }
 
 function card(point, opts = {}) {
-  const d = document.createElement("div");
-  d.className = "card";
+  const d = el("div", "card");
   const row = el("div", "row");
-  row.append(el("span", "dot " + (STATUS_CLS[point.status] || "unknown")));
-  row.append(el("span", "status " + (STATUS_CLS[point.status] || "unknown"), (STATUS_TEXT[point.status] || "?").toLowerCase()));
+  const cls = STATUS_CLS[point.status] || "unknown";
+  const badge = el("span", "badge " + cls);
+  badge.append(el("span", "dot"), el("span", "", (STATUS_TEXT[point.status] || "?").toLowerCase()));
+  row.append(badge);
   row.append(el("span", "name", opts.short ? (point.displayName || point.evseId) : (point.displayName || point.name || "?")));
   if (point.distanceKm != null) row.append(el("span", "dist", point.distanceKm.toFixed(1) + " km"));
   d.append(row);
-  if (point.address) d.append(el("div", "addr", point.address));
-  d.append(el("div", "evse", point.evseId || ""));
-  if (point.updatedAt) d.append(el("div", "ts", "status updated " + point.updatedAt));
-  d.append(opts.actions || el("div"));
+  const meta = el("div", "meta");
+  if (point.address) meta.append(el("span", "addr", point.address));
+  if (point.evseId) meta.append(el("span", "evse", point.evseId));
+  d.append(meta);
+  if (point.updatedAt) d.append(el("div", "ts", "Updated " + point.updatedAt));
+  if (opts.actions) d.append(opts.actions);
   return d;
 }
 
@@ -96,23 +98,22 @@ function renderWatch() {
   const box = $("watch");
   box.textContent = "";
   if (!watch.length) {
-    box.append(el("div", "note", "Nothing watched yet - tap ⭐ on a charger below."));
+    box.append(el("div", "note", "No chargers watched yet — tap Watch on a nearby charger below."));
     return;
   }
   for (const w of watch) {
     const actions = el("div", "actions");
-    const btnFree = el("button", "mini" + (w.notifyWhenFree ? " on" : ""), "🔔 free");
+    const btnFree = el("button", "mini" + (w.notifyWhenFree ? " on" : ""), "🔔 Free");
     btnFree.onclick = () => { w.notifyWhenFree = !w.notifyWhenFree; saveWatch(); renderWatch(); };
-    const btnBusy = el("button", "mini" + (w.notifyWhenBusy ? " on" : ""), "🔔 busy");
+    const btnBusy = el("button", "mini" + (w.notifyWhenBusy ? " on" : ""), "🔔 Busy");
     btnBusy.onclick = () => { w.notifyWhenBusy = !w.notifyWhenBusy; saveWatch(); renderWatch(); };
-    const rm = el("button", "mini", "✕");
+    const rm = el("button", "mini rm", "Remove");
     rm.onclick = () => { watch = watch.filter((x) => x.uuid !== w.uuid); saveWatch(); renderWatch(); };
     actions.append(btnFree, btnBusy, rm);
-    const c = card({
+    box.append(card({
       uuid: w.uuid, status: w.lastStatus || "UNKNOWN", displayName: w.name,
       evseId: w.evseId, address: "", updatedAt: w.updatedAt,
-    }, { short: true, actions });
-    box.append(c);
+    }, { short: true, actions }));
   }
 }
 
@@ -121,23 +122,29 @@ function renderNearby(points) {
   box.textContent = "";
   for (const p of points) {
     const watched = watch.some((w) => w.uuid === p.uuid);
-    const btn = el("button", "watch", watched ? "★ watched" : "☆ watch");
+    const btn = el("button", "watch" + (watched ? " watched" : ""), watched ? "✓ Watching" : "+ Watch charger");
     btn.disabled = watched;
     btn.onclick = () => {
       watch.push({ uuid: p.uuid, evseId: p.evseId, name: p.displayName || p.name,
         lastStatus: p.status, updatedAt: null, notifyWhenFree: true, notifyWhenBusy: true });
       saveWatch(); renderWatch(); renderNearby(points);
     };
-    const c = card({ ...p, address: p.address, distanceKm: p.distanceKm }, { actions: btn });
-    box.append(c);
+    box.append(card(p, { actions: btn }));
   }
 }
 
 // ---------- polling & notifications ----------
+function syncNotifBtn() {
+  const btn = $("notifbtn");
+  if (!("Notification" in window)) { btn.textContent = "🔕 Unsupported"; btn.disabled = true; return; }
+  if (Notification.permission === "granted") { btn.textContent = "🔔 Alerts On"; btn.className = "mini on"; }
+  else if (Notification.permission === "denied") { btn.textContent = "🔕 Blocked"; }
+}
+
 async function requestNotifications() {
-  if (!("Notification" in window)) { $("notif").textContent = "Notifications not supported in this browser."; return; }
-  const perm = await Notification.requestPermission();
-  $("notif").textContent = perm === "granted" ? "🔔 Notifications on" : "Notifications blocked - enable in browser settings.";
+  if (!("Notification" in window)) { $("state").textContent = "Notifications unsupported"; return; }
+  await Notification.requestPermission();
+  syncNotifBtn();
 }
 
 async function poll() {
@@ -146,7 +153,7 @@ async function poll() {
   try {
     points = await details(watch.map((w) => w.uuid));
   } catch (e) {
-    $("state").textContent = "poll failed: " + e.message;
+    $("state").textContent = "Poll error";
     return;
   }
   for (const p of points) {
@@ -158,10 +165,10 @@ async function poll() {
       if (wantFree || wantBusy) {
         try {
           new Notification("Charger " + (w.name || w.evseId), {
-            body: "Now " + STATUS_TEXT[p.status] + " - " + (p.displayName || w.evseId),
+            body: "Now " + STATUS_TEXT[p.status] + " — " + (p.displayName || w.evseId),
             tag: w.uuid, renotify: true,
           });
-        } catch (e) { /* notifications unavailable; ignore */ }
+        } catch (e) { /* ignore */ }
       }
     }
     w.lastStatus = p.status;
@@ -172,9 +179,8 @@ async function poll() {
   renderWatch();
   const stale = points.filter((p) => p.statusUpdateTimestamp && Date.now() - new Date(p.statusUpdateTimestamp).getTime() > 3 * 3600e3).length;
   $("state").textContent =
-    new Date().toLocaleTimeString() + " · polled " + points.length + " watched" +
-    (stale ? " · ⚠ " + stale + " status(es) stale (>3h)" : "") +
-    (document.hidden ? " · background (may be paused by OS)" : "");
+    "Updated " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) +
+    (stale ? " · " + stale + " stale" : "");
 }
 
 let pollTimer = null;
@@ -182,7 +188,7 @@ function startPolling() {
   const secs = parseInt($("interval").value, 10);
   clearInterval(pollTimer);
   pollTimer = setInterval(poll, secs * 1000);
-  $("state").textContent = "polling every " + secs + "s";
+  $("state").textContent = "Every " + secs + "s";
 }
 
 // ---------- locate & search ----------
@@ -194,7 +200,7 @@ function haversine(lat1, lon1, lat2, lon2) {
 }
 
 async function loadNearby(lat, lon) {
-  $("state").textContent = "searching…";
+  $("state").textContent = "Searching…";
   try {
     const pts = await search("", { latitude: lat, longitude: lon });
     const withDist = pts
@@ -206,24 +212,24 @@ async function loadNearby(lat, lon) {
       }))
       .sort((a, b) => a.distanceKm - b.distanceKm);
     renderNearby(withDist);
-    $("state").textContent = withDist.length + " chargers found. Tap ☆ to watch one.";
+    $("state").textContent = withDist.length + " nearby";
   } catch (e) {
-    $("state").textContent = "search failed: " + e.message;
+    $("state").textContent = "Search failed";
   }
 }
 
 function useMyLocation() {
-  if (!navigator.geolocation) { $("state").textContent = "Geolocation unavailable - use manual lat/lon."; return; }
-  $("state").textContent = "locating…";
+  if (!navigator.geolocation) { $("state").textContent = "No GPS — enter manually"; return; }
+  $("state").textContent = "Locating…";
   navigator.geolocation.getCurrentPosition(
     (pos) => loadNearby(pos.coords.latitude, pos.coords.longitude),
-    (err) => { $("state").textContent = "Location blocked (" + err.message + ") - use manual lat/lon."; },
+    () => { $("state").textContent = "Location blocked"; },
     { enableHighAccuracy: true, timeout: 10000 });
 }
 
 function manualGo() {
   const lat = parseFloat($("lat").value), lon = parseFloat($("lon").value);
-  if (isNaN(lat) || isNaN(lon)) { $("state").textContent = "Enter valid lat/lon."; return; }
+  if (isNaN(lat) || isNaN(lon)) { $("state").textContent = "Invalid coordinates"; return; }
   loadNearby(lat, lon);
 }
 
@@ -234,7 +240,8 @@ document.addEventListener("DOMContentLoaded", () => {
   $("notifbtn").onclick = requestNotifications;
   $("interval").onchange = startPolling;
   $("refresh").onclick = poll;
-  poll();
+  syncNotifBtn();
   startPolling();
   renderWatch();
+  poll();
 });
