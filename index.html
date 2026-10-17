@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#11141a">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./icon-192.png" type="image/png">
+<title>InCharge Watcher</title>
+<style>
+ body{font-family:system-ui,sans-serif;margin:0;background:#11141a;color:#e8eaf0;padding-bottom:3rem}
+ h1{font-size:1.1rem;padding:.9rem 1rem;margin:0;background:#1b222e}
+ .wrap{max-width:620px;margin:auto;padding:1rem}
+ section h2{font-size:.85rem;text-transform:uppercase;letter-spacing:.05em;color:#9fb0c8;margin:1.2rem 0 .4rem}
+ button{background:#2f6fed;color:#fff;border:0;border-radius:8px;padding:.7rem 1rem;font-size:1rem;cursor:pointer}
+ button:disabled{opacity:.5}
+ .locrow{display:flex;gap:.4rem}
+ .locrow input{flex:1;padding:.6rem;border-radius:6px;border:1px solid #2a3242;background:#1b222e;color:#e8eaf0}
+ .card{background:#1b222e;border:1px solid #2a3242;border-radius:10px;padding:.7rem;margin-top:.6rem}
+ .row{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap}
+ .dot{width:11px;height:11px;border-radius:50%;flex:none}
+ .free{background:#2ecc71}.busy{background:#e74c3c}.unknown{background:#f39c12}.error{background:#888}
+ .status{text-transform:capitalize;font-size:.8rem;font-weight:600}
+ .name{font-weight:600}.dist{margin-left:auto;color:#9fb0c8;font-size:.85rem}
+ .addr{color:#9fb0c8;font-size:.85rem;margin-top:.2rem}
+ .evse{color:#6b7a94;font-size:.72rem;margin-top:.2rem;word-break:break-all}
+ .ts{color:#6b7a94;font-size:.72rem;margin-top:.2rem}
+ .note{color:#6b7a94;font-size:.75rem;margin-top:.4rem}
+ .actions{display:flex;gap:.4rem;margin-top:.5rem}
+ .mini{font-size:.8rem;padding:.35rem .6rem;background:#2a3242;border-radius:6px}
+ .mini.on{background:#2f6fed}
+ .watch{font-size:.85rem;padding:.4rem .7rem;margin-top:.5rem;background:#2a3242}
+ #bar{position:fixed;bottom:0;left:0;right:0;background:#151a23;border-top:1px solid #2a3242;padding:.5rem 1rem;display:flex;gap:.6rem;align-items:center;flex-wrap:wrap}
+ #interval{background:#1b222e;color:#e8eaf0;border:1px solid #2a3242;border-radius:6px;padding:.4rem}
+ #state{color:#9fb0c8;font-size:.8rem}
+</style>
+</head>
+<body>
+<h1>🔌 InCharge Watcher — nearby chargers &amp; notifications</h1>
+<div class="wrap">
+ <section>
+  <h2>Find chargers</h2>
+  <div class="locrow">
+    <button id="locate">📍 Use my location</button>
+    <input id="lat" placeholder="lat" inputmode="decimal">
+    <input id="lon" placeholder="lon" inputmode="decimal">
+    <button id="go">Go</button>
+  </div>
+  <div id="nearby"></div>
+ </section>
+ <section>
+  <h2>Watched <button id="refresh" style="float:right;font-size:.8rem;padding:.35rem .7rem;background:#2a3242">↻ poll now</button></h2>
+  <div id="watch"></div>
+ </section>
+</div>
+<div id="bar">
+  <button id="notifbtn">🔔 enable notifications</button>
+  <label style="color:#9fb0c8;font-size:.85rem">every <select id="interval">
+    <option value="30">30s</option><option value="60" selected>1 min</option><option value="120">2 min</option><option value="300">5 min</option>
+  </select></label>
+  <span id="state">loading…</span>
+</div>
+<script src="./app.js"></script>
+</body>
+</html>
